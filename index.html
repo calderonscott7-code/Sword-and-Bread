@@ -234,11 +234,13 @@ function doAdvance(target) {
   if (target === 'walk') {
     gameScene = 1;
     document.getElementById('scene-label').textContent = 'MOUNTAIN PASS';
+    playMusic(1);
     currentScript = WALK; scriptIdx = 0; nextLine();
   } else if (target === 'battle') {
     gameScene = 2;
     document.getElementById('scene-label').textContent = "DEMON'S LAIR";
     document.getElementById('demon-hud').style.display = 'flex';
+    stopSteps(); playMusic(2);
     currentScript = BATTLE_INTRO; scriptIdx = 0; nextLine();
   } else if (target === 'fightmenu') {
     battleActive = true;
@@ -270,6 +272,7 @@ function showFightMenu() {
 }
 
 function doAttack(type) {
+  sfxSword();
   const dmg = type === 'sword'
     ? 14 + Math.floor(Math.random() * 16)
     : 8 + Math.floor(Math.random() * 14);
@@ -279,6 +282,7 @@ function doAttack(type) {
   const dDmg = 10 + Math.floor(Math.random() * 14);
   mapleleafHP = Math.max(0, mapleleafHP - dDmg);
   updateBars();
+  setTimeout(sfxDamage, 300);
   if (mapleleafHP <= 0) { defeat(); return; }
   const log = type === 'sword'
     ? `Mapleleaf's blade connects! ${dmg} damage!`
@@ -299,6 +303,7 @@ function askBeaver() {
 
 function useReceipt() {
   if (receiptUsed) return;
+  sfxReceipt();
   receiptUsed = true;
   const dmg = 1 + Math.floor(Math.random() * 4);
   demonHP = Math.max(0, demonHP - dmg);
@@ -315,6 +320,8 @@ function useReceipt() {
 
 function victory() {
   gameOver = true; battleActive = false;
+  stopMusic(); stopSteps();
+  setTimeout(sfxVictory, 100);
   setDlg('VICTORY!!!',
     "THE DEMON FALLS! MAPLELEAF STANDS TRIUMPHANT!\n\nBeaver: \"...We still have the bread if you're hungry. You really should have used it.\"",
     [{ label:'Play Again', fn: () => location.reload() }]);
@@ -322,6 +329,8 @@ function victory() {
 
 function defeat() {
   gameOver = true; battleActive = false;
+  stopMusic(); stopSteps();
+  setTimeout(sfxDefeat, 100);
   setDlg('MAPLELEAF HAS FALLEN',
     "...\n\nBeaver: \"I told you. The bread could have helped. Probably. I'm an elf, not a physician.\"",
     [{ label:'Try Again', fn: () => location.reload() }]);
@@ -550,10 +559,182 @@ function renderLoop() {
   requestAnimationFrame(renderLoop);
 }
 
+// ─── AUDIO ENGINE ────────────────────────────────────────────────────────────
+
+let audioCtx = null;
+let musicNodes = [];
+let musicPlaying = false;
+let stepInterval = null;
+let currentTrack = -1;
+
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function schedNote(ac, freq, type, vol, start, dur) {
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = type; osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, start);
+  gain.gain.exponentialRampToValueAtTime(0.001, start + dur);
+  osc.start(start); osc.stop(start + dur + 0.02);
+  musicNodes.push(osc);
+}
+
+function playTone(freq, type, duration, vol, delay=0) {
+  const ac = getAudio();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = type; osc.frequency.value = freq;
+  gain.gain.setValueAtTime(vol, ac.currentTime + delay);
+  gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + delay + duration);
+  osc.start(ac.currentTime + delay);
+  osc.stop(ac.currentTime + delay + duration + 0.02);
+}
+
+function playNoise(duration, vol, delay=0, freqCenter=600) {
+  const ac = getAudio();
+  const buf = ac.createBuffer(1, Math.ceil(ac.sampleRate * duration), ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i=0;i<data.length;i++) data[i] = Math.random()*2-1;
+  const src = ac.createBufferSource(); src.buffer = buf;
+  const filter = ac.createBiquadFilter(); filter.type='bandpass'; filter.frequency.value=freqCenter;
+  const gain = ac.createGain();
+  src.connect(filter); filter.connect(gain); gain.connect(ac.destination);
+  gain.gain.setValueAtTime(vol, ac.currentTime+delay);
+  gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+delay+duration);
+  src.start(ac.currentTime+delay); src.stop(ac.currentTime+delay+duration+0.02);
+}
+
+// SFX
+function sfxSword() {
+  playNoise(0.07, 0.45, 0, 1200);
+  playTone(880, 'square', 0.12, 0.2);
+  playTone(550, 'sine',   0.28, 0.12, 0.05);
+  playTone(330, 'sine',   0.22, 0.08, 0.12);
+}
+
+function sfxDamage() {
+  playNoise(0.14, 0.5, 0, 200);
+  playTone(180, 'sawtooth', 0.18, 0.25);
+  playTone(90,  'sine',     0.28, 0.18, 0.06);
+}
+
+function sfxReceipt() {
+  playNoise(0.12, 0.35, 0, 4000);
+  playTone(2600, 'sine', 0.07, 0.18, 0.04);
+  playTone(1900, 'sine', 0.05, 0.12, 0.09);
+}
+
+function sfxVictory() {
+  const notes = [523,659,784,1047,784,1047,1319];
+  const times = [0,0.13,0.26,0.39,0.55,0.63,0.76];
+  notes.forEach((f,i) => {
+    playTone(f,       'square',   i===notes.length-1?0.65:0.14, 0.22, times[i]);
+    playTone(f*0.749, 'triangle', i===notes.length-1?0.65:0.14, 0.10, times[i]);
+  });
+}
+
+function sfxDefeat() {
+  const ac = getAudio();
+  const osc = ac.createOscillator();
+  const gain = ac.createGain();
+  osc.connect(gain); gain.connect(ac.destination);
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(380, ac.currentTime);
+  osc.frequency.linearRampToValueAtTime(75, ac.currentTime+1.3);
+  gain.gain.setValueAtTime(0.28, ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+1.5);
+  osc.start(); osc.stop(ac.currentTime+1.55);
+}
+
+function sfxStep() {
+  playNoise(0.055, 0.07, 0, 120);
+  playTone(75, 'sine', 0.055, 0.08);
+}
+
+// Music
+function stopMusic() {
+  musicNodes.forEach(n => { try{n.stop();}catch(e){} });
+  musicNodes = []; musicPlaying = false;
+}
+
+function playMusic(track) {
+  if (track===currentTrack && musicPlaying) return;
+  stopMusic(); currentTrack=track; musicPlaying=true;
+  const ac = getAudio();
+  if (track===0) schedForestMusic(ac);
+  else if (track===1) schedMountainMusic(ac);
+  else schedBattleMusic(ac);
+}
+
+function loopMusic(ac, fn, loopSecs) {
+  let t = ac.currentTime + 0.1;
+  function go() {
+    fn(ac, t);
+    t += loopSecs;
+    const tid = setTimeout(go, (loopSecs - 0.35) * 1000);
+    musicNodes.push({ stop: ()=>clearTimeout(tid) });
+  }
+  go();
+}
+
+function schedForestMusic(ac) {
+  const bpm=88, b=60/bpm;
+  const mel=[392,440,523,440,392,349,392,440,523,587,523,440,392,330,349,392];
+  const bas=[130,0,146,0,130,0,123,0,130,0,146,0,130,0,110,0];
+  loopMusic(ac, (ac,t)=>{
+    mel.forEach((f,i)=>{ if(f) schedNote(ac,f,'triangle',0.07,t+i*b,b*0.72); });
+    bas.forEach((f,i)=>{ if(f) schedNote(ac,f,'sine',0.09,t+i*b,b*1.4); });
+  }, 16*b);
+}
+
+function schedMountainMusic(ac) {
+  const bpm=105, b=60/bpm;
+  const mel=[220,246,220,196,175,196,220,246,261,246,220,196,175,165,175,196];
+  const bas=[110,0,0,110,0,0,98,0,0,98,0,0,87,0,0,87];
+  loopMusic(ac, (ac,t)=>{
+    mel.forEach((f,i)=>schedNote(ac,f,'square',0.055,t+i*b,b*0.5));
+    bas.forEach((f,i)=>{ if(f) schedNote(ac,f,'sawtooth',0.08,t+i*b,b*1.1); });
+  }, 16*b);
+}
+
+function schedBattleMusic(ac) {
+  const bpm=148, b=60/bpm;
+  const mel=[440,0,494,0,523,0,494,440,415,0,440,0,466,0,440,415];
+  const bas=[110,110,0,110,110,0,110,0,104,104,0,104,104,0,104,0];
+  loopMusic(ac, (ac,t)=>{
+    mel.forEach((f,i)=>{ if(f) schedNote(ac,f,'square',0.065,t+i*b,b*0.44); });
+    bas.forEach((f,i)=>{ if(f) schedNote(ac,f,'sawtooth',0.09,t+i*b,b*0.85); });
+    for(let i=0;i<16;i+=2){
+      const kt=t+i*b;
+      const o=ac.createOscillator(), g=ac.createGain();
+      o.connect(g); g.connect(ac.destination); o.type='sine';
+      o.frequency.setValueAtTime(130,kt); o.frequency.exponentialRampToValueAtTime(38,kt+b*0.38);
+      g.gain.setValueAtTime(0.18,kt); g.gain.exponentialRampToValueAtTime(0.001,kt+b*0.38);
+      o.start(kt); o.stop(kt+b*0.4); musicNodes.push(o);
+    }
+  }, 16*b);
+}
+
+function startSteps() {
+  stopSteps();
+  stepInterval = setInterval(()=>{ if(!battleActive&&!gameOver) sfxStep(); }, 420);
+}
+function stopSteps() {
+  if(stepInterval){ clearInterval(stepInterval); stepInterval=null; }
+}
+
 // ─── START ──────────────────────────────────────────────────────────────────
 
 function startGame() {
   document.getElementById('title-screen').style.display = 'none';
+  getAudio();
+  playMusic(0);
+  startSteps();
   nextLine();
   renderLoop();
 }

@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bread Quest</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0a0414;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Press Start 2P', monospace;
+    overflow: hidden;
+  }
+  #game-wrapper {
+    width: 680px;
+    max-width: 100vw;
+    border: 3px solid #7c4fd4;
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 0 40px #7c4fd455;
+  }
+  #hud {
+    background: #08030f;
+    border-bottom: 2px solid #3a1060;
+    padding: 6px 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .hud-label { color: #c89aff; font-size: 7px; }
+  .hp-bar-bg { width: 100px; height: 10px; background: #2a1040; border: 1px solid #7c4fd4; border-radius: 2px; }
+  .hp-bar-fill { height: 100%; border-radius: 1px; transition: width 0.3s, background 0.3s; }
+  #mapleleaf-hp-fill { background: #e24b4a; width: 100%; }
+  #demon-hp-fill { background: #e24b4a; width: 100%; }
+  .hp-num { color: #e8d8ff; font-size: 7px; min-width: 24px; }
+  #scene-label { color: #666; font-size: 7px; margin-left: auto; }
+  #demon-hud { display: none; align-items: center; gap: 6px; }
+
+  canvas { display: block; width: 100%; background: #0a0414; }
+
+  #dialogue-panel {
+    background: #08030f;
+    border-top: 2px solid #7c4fd4;
+    padding: 12px 14px 10px;
+    min-height: 110px;
+  }
+  #dlg-name {
+    color: #c89aff;
+    font-size: 8px;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+  #dlg-text {
+    color: #e8d8ff;
+    font-size: 9px;
+    line-height: 1.8;
+    min-height: 36px;
+    margin-bottom: 10px;
+  }
+  #dlg-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .game-btn {
+    background: #1a0840;
+    border: 2px solid #7c4fd4;
+    color: #e8d8ff;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 7px;
+    padding: 7px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.1s, border-color 0.1s;
+    line-height: 1.4;
+  }
+  .game-btn:hover { background: #3a1080; border-color: #c89aff; }
+  .game-btn:active { transform: scale(0.97); }
+  .game-btn.gold { border-color: #ef9f27; color: #ffe0aa; }
+  .game-btn.gold:hover { background: #2a1800; border-color: #f5c462; }
+  .game-btn.red { border-color: #e24b4a; color: #ffbbbb; }
+
+  #title-screen {
+    position: fixed; inset: 0;
+    background: #0a0414;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    z-index: 100;
+    gap: 20px;
+  }
+  #title-screen h1 {
+    font-family: 'Press Start 2P', monospace;
+    color: #c89aff;
+    font-size: 22px;
+    text-shadow: 3px 3px 0 #7c4fd4, 6px 6px 0 #3a1060;
+    text-align: center;
+    line-height: 1.6;
+  }
+  #title-screen p {
+    font-family: 'Press Start 2P', monospace;
+    color: #888;
+    font-size: 9px;
+    text-align: center;
+    line-height: 2;
+  }
+  #title-screen .subtitle {
+    color: #ef9f27;
+    font-size: 8px;
+    text-align: center;
+    line-height: 2;
+  }
+  #start-btn {
+    background: #7c4fd4;
+    border: none;
+    color: white;
+    font-family: 'Press Start 2P', monospace;
+    font-size: 11px;
+    padding: 14px 28px;
+    border-radius: 4px;
+    cursor: pointer;
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+  #start-btn:hover { background: #9b6ef5; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+</style>
+</head>
+<body>
+
+<div id="title-screen">
+  <h1>BREAD<br>QUEST</h1>
+  <p class="subtitle">A Sourdough Epic</p>
+  <p>A redhead warrior.<br>A tiny elf with a full bag.<br>One loaf that refuses to leave.</p>
+  <button id="start-btn" onclick="startGame()">▶ BEGIN QUEST</button>
+</div>
+
+<div id="game-wrapper">
+  <div id="hud">
+    <span class="hud-label">MAPLELEAF</span>
+    <div class="hp-bar-bg"><div class="hp-bar-fill" id="mapleleaf-hp-fill"></div></div>
+    <span class="hp-num" id="mapleleaf-hp-num">100</span>
+    <div id="demon-hud">
+      <span class="hud-label" style="margin-left:8px">DEMON</span>
+      <div class="hp-bar-bg"><div class="hp-bar-fill" id="demon-hp-fill"></div></div>
+      <span class="hp-num" id="demon-hp-num">100</span>
+    </div>
+    <span id="scene-label">FOREST PATH</span>
+  </div>
+  <canvas id="c" width="680" height="300"></canvas>
+  <div id="dialogue-panel">
+    <div id="dlg-name"></div>
+    <div id="dlg-text"></div>
+    <div id="dlg-buttons"></div>
+  </div>
+</div>
+
+<script>
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const W = 680, H = 300;
+
+let mapleleafHP = 100, demonHP = 100;
+let gameScene = 0; // 0=forest, 1=mountain, 2=lair
+let anim = 0;
+let receiptUsed = false;
+let battleActive = false;
+let gameOver = false;
+let mapleleafX = 130, beaverX = 80;
+let walkDir = 1;
+
+// ─── DIALOGUE ENGINE ───────────────────────────────────────────────────────
+
+const INTRO = [
+  { spk:'MAPLELEAF', txt:"Beaver, hold these while we travel. I found a Raley's receipt, some bananas, my lotion, and this loaf of bread. Keep them safe." },
+  { spk:'BEAVER (ELF)', txt:"*stuffs everything into bulging sack* Okay okay... but Mapleleaf... the bag is COMPLETELY stuffed. Something has to go." },
+  { spk:'MAPLELEAF', txt:"Nothing leaves the bag. We might need all of it." },
+  { spk:'BEAVER (ELF)', txt:"...What if we just left the bread?" },
+  { spk:'MAPLELEAF', txt:"We are KEEPING the bread, Beaver. Now let's move.", advance:'walk' },
+];
+
+const WALK = [
+  { spk:'BEAVER (ELF)', txt:"*shuffling along, bag rattling* Hey Mapleleaf... do you want some bread? You could eat it. Then it'd be gone from the bag." },
+  { spk:'MAPLELEAF', txt:"I'm not eating the bread, Beaver." },
+  { spk:'BEAVER (ELF)', txt:"It's a really nice loaf though. Sourdough. Still warm, I think." },
+  { spk:'MAPLELEAF', txt:"Keep walking." },
+  { spk:'BEAVER (ELF)', txt:"We could just drop it on the side of the road. Nobody would know." },
+  { spk:'MAPLELEAF', txt:"BREAD. STAYS. Are we close to the demon?" },
+  { spk:'BEAVER (ELF)', txt:"*sighs deeply* Yes... his lair is just over that ridge.", advance:'battle' },
+];
+
+const BATTLE_INTRO = [
+  { spk:'MAPLELEAF', txt:"DEMON! Your reign of terror ends tonight!" },
+  { spk:'RED DEMON', txt:"*ROARS* WHO DARES ENTER MY LAIR?!" },
+  { spk:'BEAVER (ELF)', txt:"Mapleleaf, I have your inventory ready. Bananas, lotion, receipt... and the bread." },
+  { spk:'MAPLELEAF', txt:"Give me a weapon, Beaver. Something that will actually hurt him." },
+  { spk:'BEAVER (ELF)', txt:"...The bread is right here." },
+  { spk:'MAPLELEAF', txt:"A REAL WEAPON, BEAVER." },
+  { spk:'BEAVER (ELF)', txt:"*frantically digs through bag* Right! Yes! SWORD!", advance:'fightmenu' },
+];
+
+let currentScript = INTRO;
+let scriptIdx = 0;
+
+function setDlg(name, text, buttons) {
+  document.getElementById('dlg-name').textContent = name;
+  document.getElementById('dlg-text').textContent = text;
+  const bc = document.getElementById('dlg-buttons');
+  bc.innerHTML = '';
+  buttons.forEach(b => {
+    const el = document.createElement('button');
+    el.className = 'game-btn' + (b.cls ? ' ' + b.cls : '');
+    el.textContent = b.label;
+    el.onclick = b.fn;
+    bc.appendChild(el);
+  });
+}
+
+function nextLine() {
+  const line = currentScript[scriptIdx];
+  const isLast = scriptIdx >= currentScript.length - 1;
+  if (isLast && line.advance) {
+    setDlg(line.spk, line.txt, [{ label:'Continue ▶', fn: () => doAdvance(line.advance) }]);
+  } else {
+    setDlg(line.spk, line.txt, [{ label:'Continue ▶', fn: () => { scriptIdx++; nextLine(); } }]);
+  }
+}
+
+function doAdvance(target) {
+  if (target === 'walk') {
+    gameScene = 1;
+    document.getElementById('scene-label').textContent = 'MOUNTAIN PASS';
+    currentScript = WALK; scriptIdx = 0; nextLine();
+  } else if (target === 'battle') {
+    gameScene = 2;
+    document.getElementById('scene-label').textContent = "DEMON'S LAIR";
+    document.getElementById('demon-hud').style.display = 'flex';
+    currentScript = BATTLE_INTRO; scriptIdx = 0; nextLine();
+  } else if (target === 'fightmenu') {
+    battleActive = true;
+    showFightMenu();
+  }
+}
+
+// ─── BATTLE ────────────────────────────────────────────────────────────────
+
+function hpPercent() { return mapleleafHP / 100; }
+
+function elfBreadLine() {
+  const p = hpPercent();
+  if (p > 0.6) return 'Beaver: "I still have the bread if you need it!"';
+  if (p > 0.3) return 'Beaver: "MAPLELEAF, half health! The bread is RIGHT HERE!!"';
+  return 'Beaver: "TAKE THE BREAD!! PLEASE!! I AM BEGGING YOU!!"';
+}
+
+function showFightMenu() {
+  const btns = [
+    { label:'⚔  Sword strike', fn: () => doAttack('sword') },
+    { label:'👊 Combo attack',  fn: () => doAttack('combo') },
+    { label:'🎒 Ask Beaver for item', fn: askBeaver },
+  ];
+  if (!receiptUsed) {
+    btns.push({ label:"🧾 PAPERCUT! (Receipt)", fn: useReceipt, cls:'gold' });
+  }
+  setDlg('YOUR MOVE', `Mapleleaf HP: ${mapleleafHP}  |  Demon HP: ${demonHP}`, btns);
+}
+
+function doAttack(type) {
+  const dmg = type === 'sword'
+    ? 14 + Math.floor(Math.random() * 16)
+    : 8 + Math.floor(Math.random() * 14);
+  demonHP = Math.max(0, demonHP - dmg);
+  updateBars();
+  if (demonHP <= 0) { victory(); return; }
+  const dDmg = 10 + Math.floor(Math.random() * 14);
+  mapleleafHP = Math.max(0, mapleleafHP - dDmg);
+  updateBars();
+  if (mapleleafHP <= 0) { defeat(); return; }
+  const log = type === 'sword'
+    ? `Mapleleaf's blade connects! ${dmg} damage!`
+    : `Combo strike! ${dmg} damage!`;
+  setDlg('BATTLE LOG',
+    `${log}\nDemon retaliates for ${dDmg} damage!\n\n${elfBreadLine()}`,
+    [{ label:'Continue ▶', fn: showFightMenu }]);
+}
+
+function askBeaver() {
+  const p = hpPercent();
+  let line;
+  if (p > 0.6) line = "...The bread is right here. It's quite dense, could work as a club?";
+  else if (p > 0.3) line = "Mapleleaf, you're at half health, PLEASE just take the bread. It's all I can reach right now!";
+  else line = "MAPLELEAF YOU ARE ALMOST DEAD. TAKE. THE. BREAD. I AM ON MY KNEES!";
+  setDlg('BEAVER (ELF)', line, [{ label:"NOT THE BREAD, BEAVER.", fn: showFightMenu }]);
+}
+
+function useReceipt() {
+  if (receiptUsed) return;
+  receiptUsed = true;
+  const dmg = 1 + Math.floor(Math.random() * 4);
+  demonHP = Math.max(0, demonHP - dmg);
+  updateBars();
+  if (demonHP <= 0) { victory(); return; }
+  const dDmg = 10 + Math.floor(Math.random() * 14);
+  mapleleafHP = Math.max(0, mapleleafHP - dDmg);
+  updateBars();
+  if (mapleleafHP <= 0) { defeat(); return; }
+  setDlg('BATTLE LOG',
+    `Mapleleaf whips out the Raley's receipt!\nDEVASTATING PAPERCUT! ${dmg} damage!\nDemon: "...ow?"\n\nDemon retaliates in embarrassment for ${dDmg} damage!`,
+    [{ label:'Continue ▶', fn: showFightMenu }]);
+}
+
+function victory() {
+  gameOver = true; battleActive = false;
+  setDlg('VICTORY!!!',
+    "THE DEMON FALLS! MAPLELEAF STANDS TRIUMPHANT!\n\nBeaver: \"...We still have the bread if you're hungry. You really should have used it.\"",
+    [{ label:'Play Again', fn: () => location.reload() }]);
+}
+
+function defeat() {
+  gameOver = true; battleActive = false;
+  setDlg('MAPLELEAF HAS FALLEN',
+    "...\n\nBeaver: \"I told you. The bread could have helped. Probably. I'm an elf, not a physician.\"",
+    [{ label:'Try Again', fn: () => location.reload() }]);
+}
+
+function updateBars() {
+  const mapleleafFill = document.getElementById('mapleleaf-hp-fill');
+  mapleleafFill.style.width = mapleleafHP + '%';
+  mapleleafFill.style.background = mapleleafHP > 50 ? '#e24b4a' : mapleleafHP > 25 ? '#ef9f27' : '#ff3333';
+  document.getElementById('mapleleaf-hp-num').textContent = mapleleafHP;
+  document.getElementById('demon-hp-fill').style.width = demonHP + '%';
+  document.getElementById('demon-hp-num').textContent = demonHP;
+}
+
+// ─── PIXEL ART RENDERING ───────────────────────────────────────────────────
+
+function px(color) { ctx.fillStyle = color; }
+
+function drawForest() {
+  px('#0d1a0d'); ctx.fillRect(0,0,W,H);
+  // sky gradient illusion
+  px('#0a1208'); ctx.fillRect(0,0,W,120);
+  // trees
+  for (let i = 0; i < 14; i++) {
+    const tx = i * 52 - 10;
+    const th = 70 + Math.sin(i * 2.3) * 35;
+    px('#0a2a0a'); ctx.beginPath(); ctx.moveTo(tx,H-70); ctx.lineTo(tx+22,H-70-th); ctx.lineTo(tx+44,H-70); ctx.fill();
+    px('#0f3a0f'); ctx.beginPath(); ctx.moveTo(tx+4,H-70); ctx.lineTo(tx+22,H-70-th+15); ctx.lineTo(tx+40,H-70); ctx.fill();
+    px('#0a1e0a'); ctx.fillRect(tx+16, H-70, 10, 20);
+  }
+  px('#081408'); ctx.fillRect(0,H-70,W,70);
+  px('#123512'); ctx.fillRect(0,H-72,W,6);
+  // stars
+  for (let i=0;i<18;i++){px('#ffffff'+(Math.floor(60+Math.sin(i*3)*40).toString(16)));ctx.fillRect(20+i*37+Math.sin(i*7)*12,8+Math.cos(i*5)*20,1.5,1.5);}
+}
+
+function drawMountain() {
+  px('#0d0820'); ctx.fillRect(0,0,W,H);
+  px('#100a28'); ctx.fillRect(0,0,W,140);
+  for (let i=0;i<6;i++){
+    const mx=i*120, mh=90+Math.sin(i*2.1)*55;
+    px('#1c0e3a'); ctx.beginPath();ctx.moveTo(mx,H-65);ctx.lineTo(mx+60,H-65-mh);ctx.lineTo(mx+120,H-65);ctx.fill();
+    px('#2a1555'); ctx.beginPath();ctx.moveTo(mx+10,H-65);ctx.lineTo(mx+60,H-65-mh+20);ctx.lineTo(mx+110,H-65);ctx.fill();
+    px('#eeeeff99'); ctx.beginPath();ctx.moveTo(mx+50,H-65-mh);ctx.lineTo(mx+60,H-65-mh-18);ctx.lineTo(mx+70,H-65-mh);ctx.fill();
+  }
+  px('#110830'); ctx.fillRect(0,H-65,W,65);
+  px('#1e0a48'); ctx.fillRect(0,H-67,W,5);
+  for(let i=0;i<28;i++){px('#ffffffcc');ctx.fillRect(10+i*24+Math.sin(i*8)*8,5+Math.cos(i*6)*22,1.5,1.5);}
+}
+
+function drawLair() {
+  px('#130000'); ctx.fillRect(0,0,W,H);
+  // stone pillars
+  for(let i=0;i<8;i++){
+    px('#2a0000'); ctx.fillRect(i*90-8,0,16,H-58);
+    px('#1a0000'); ctx.fillRect(i*90-4,0,8,H-58);
+  }
+  px('#280000'); ctx.fillRect(0,H-58,W,58);
+  px('#400000'); ctx.fillRect(0,H-60,W,5);
+  // lava veins - animated
+  for(let i=0;i<6;i++){
+    const glow = Math.sin(anim*0.04+i)*0.4+0.6;
+    const alpha = Math.floor(glow*180).toString(16).padStart(2,'0');
+    px('#ff4400'+alpha);
+    ctx.lineWidth=2; ctx.beginPath();
+    ctx.moveTo(i*120+10,H-59);ctx.lineTo(i*120+55,H-48);ctx.lineTo(i*120+100,H-59);ctx.stroke();
+    px('#ff880044');
+    ctx.lineWidth=4; ctx.beginPath();
+    ctx.moveTo(i*120+10,H-59);ctx.lineTo(i*120+55,H-48);ctx.lineTo(i*120+100,H-59);ctx.stroke();
+  }
+  // torches
+  for(let i=0;i<4;i++){
+    const tx=80+i*160;
+    px('#8B4513');ctx.fillRect(tx-2,H-120,4,20);
+    const flicker=Math.sin(anim*0.12+i*2)*3;
+    px('#ff8800');ctx.beginPath();ctx.ellipse(tx,H-122+flicker,5,8,0,0,Math.PI*2);ctx.fill();
+    px('#ffcc00');ctx.beginPath();ctx.ellipse(tx,H-124+flicker,2.5,5,0,0,Math.PI*2);ctx.fill();
+  }
+}
+
+function drawMapleleaf(x, bob) {
+  const y = H - 60 + bob;
+  // cape
+  px('#6a1a1a'); ctx.fillRect(x-12,y-44,6,30);
+  // body armour
+  px('#8B2020'); ctx.fillRect(x-9,y-48,18,28);
+  // armour trim
+  px('#c0a020'); ctx.fillRect(x-9,y-48,18,5);
+  px('#c0a020'); ctx.fillRect(x-9,y-25,18,4);
+  // pauldrons
+  px('#aa3030'); ctx.fillRect(x-13,y-48,7,8);ctx.fillRect(x+6,y-48,7,8);
+  // head / hair
+  px('#c0392b'); ctx.beginPath();ctx.ellipse(x,y-60,12,14,0,0,Math.PI*2);ctx.fill();
+  // flowing hair strands
+  px('#a02a20'); ctx.fillRect(x-10,y-55,4,20);
+  px('#c0392b'); ctx.fillRect(x+7,y-58,5,24);
+  // face
+  px('#f0c090'); ctx.beginPath();ctx.ellipse(x,y-61,9,10,0,0,Math.PI*2);ctx.fill();
+  // eyes
+  px('#2a1010'); ctx.fillRect(x-5,y-64,3,3);ctx.fillRect(x+2,y-64,3,3);
+  px('#60a0ff'); ctx.fillRect(x-4,y-64,2,2);ctx.fillRect(x+3,y-64,2,2);
+  // mouth
+  px('#c07060'); ctx.fillRect(x-2,y-58,4,2);
+  // sword
+  px('#cccccc'); ctx.fillRect(x+10,y-54,4,28);
+  px('#aaaaaa'); ctx.fillRect(x+6,y-57,12,4);
+  px('#ffd700'); ctx.fillRect(x+10,y-60,4,6);
+  // legs
+  px('#5a1515'); ctx.fillRect(x-7,y-21,6,22);ctx.fillRect(x+1,y-21,6,22);
+  // boots
+  px('#1a0808'); ctx.fillRect(x-8,y-3,7,8);ctx.fillRect(x,y-3,8,8);
+  // boot cuffs
+  px('#3a1010'); ctx.fillRect(x-8,y-5,7,4);ctx.fillRect(x,y-5,8,4);
+}
+
+function drawBeaver(x, bob) {
+  const y = H - 60 + bob;
+  // body
+  px('#3d6b3d'); ctx.fillRect(x-5,y-28,10,22);
+  // vest detail
+  px('#2a4a2a'); ctx.fillRect(x-1,y-28,2,22);
+  // head
+  px('#e8c080'); ctx.beginPath();ctx.ellipse(x,y-35,7,8,0,0,Math.PI*2);ctx.fill();
+  // pointy ears
+  px('#e8c080');
+  ctx.beginPath();ctx.moveTo(x-7,y-37);ctx.lineTo(x-13,y-47);ctx.lineTo(x-4,y-36);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x+7,y-37);ctx.lineTo(x+13,y-47);ctx.lineTo(x+4,y-36);ctx.fill();
+  // hat
+  px('#1e3a1e'); ctx.fillRect(x-6,y-42,12,6);
+  px('#1e3a1e'); ctx.beginPath();ctx.moveTo(x,y-58);ctx.lineTo(x-6,y-42);ctx.lineTo(x+6,y-42);ctx.fill();
+  px('#2a5a2a'); ctx.fillRect(x-5,y-42,10,3);
+  // eyes
+  px('#333'); ctx.fillRect(x-3,y-37,2,2);ctx.fillRect(x+1,y-37,2,2);
+  // smile
+  px('#c07060'); ctx.fillRect(x-2,y-32,4,1);
+  // bag - stuffed!
+  px('#8B6914'); ctx.fillRect(x+5,y-26,13,16);
+  px('#6a4f10'); ctx.fillRect(x+5,y-26,13,4);
+  // strap
+  px('#5a3f0a'); ctx.fillRect(x+3,y-34,3,12);
+  // BREAD sticking out
+  px('#c8892a'); ctx.fillRect(x+6,y-30,11,7);
+  px('#a06020'); ctx.fillRect(x+7,y-32,9,3);
+  px('#e8a040'); ctx.fillRect(x+8,y-29,7,4);
+  // buckle
+  px('#c0a020'); ctx.fillRect(x+9,y-25,5,4);
+  // legs
+  px('#2a4a2a'); ctx.fillRect(x-4,y-7,4,10);ctx.fillRect(x+1,y-7,4,10);
+  px('#1a2a1a'); ctx.fillRect(x-4,y+2,4,5);ctx.fillRect(x+1,y+2,4,5);
+}
+
+function drawDemon(x, bob) {
+  const y = H - 60 + bob;
+  const rage = Math.sin(anim * 0.08) * 2;
+  // wings
+  px('#5a0808');
+  ctx.beginPath();ctx.moveTo(x-5,y-80);ctx.lineTo(x-65,y-140);ctx.lineTo(x-45,y-65);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x+5,y-80);ctx.lineTo(x+65,y-140);ctx.lineTo(x+45,y-65);ctx.fill();
+  // wing membrane
+  px('#6a0a0a99');
+  ctx.beginPath();ctx.moveTo(x-5,y-80);ctx.lineTo(x-65,y-140);ctx.lineTo(x-35,y-90);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x+5,y-80);ctx.lineTo(x+65,y-140);ctx.lineTo(x+35,y-90);ctx.fill();
+  // tail
+  px('#8B0000');
+  ctx.beginPath();ctx.moveTo(x+20,y-40);ctx.quadraticCurveTo(x+60,y-20,x+50,y+5);ctx.lineWidth=6;ctx.strokeStyle='#8B0000';ctx.stroke();
+  // body
+  px('#8B0000'); ctx.fillRect(x-22,y-78,44,58);
+  // chest plates
+  px('#6a0000'); ctx.fillRect(x-16,y-70,32,15);
+  px('#500000'); ctx.fillRect(x-12,y-68,24,12);
+  // head
+  px('#a00000'); ctx.beginPath();ctx.ellipse(x,y-90+rage,24,24,0,0,Math.PI*2);ctx.fill();
+  // horns
+  px('#cc2200');
+  ctx.beginPath();ctx.moveTo(x-14,y-104+rage);ctx.lineTo(x-22,y-132+rage);ctx.lineTo(x-7,y-102+rage);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x+14,y-104+rage);ctx.lineTo(x+22,y-132+rage);ctx.lineTo(x+7,y-102+rage);ctx.fill();
+  // horn tips
+  px('#ff3300');
+  ctx.beginPath();ctx.moveTo(x-18,y-122+rage);ctx.lineTo(x-22,y-132+rage);ctx.lineTo(x-14,y-120+rage);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x+18,y-122+rage);ctx.lineTo(x+22,y-132+rage);ctx.lineTo(x+14,y-120+rage);ctx.fill();
+  // glowing eyes
+  const eyeGlow = Math.sin(anim*0.1)*0.3+0.7;
+  px('#ff6600'); ctx.beginPath();ctx.ellipse(x-10,y-92+rage,5,6,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(x+10,y-92+rage,5,6,0,0,Math.PI*2);ctx.fill();
+  px('#ffcc00'); ctx.beginPath();ctx.ellipse(x-10,y-92+rage,3,3.5,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(x+10,y-92+rage,3,3.5,0,0,Math.PI*2);ctx.fill();
+  // mouth
+  px('#300000'); ctx.beginPath();ctx.moveTo(x-12,y-76+rage);ctx.lineTo(x+12,y-76+rage);ctx.lineTo(x+10,y-70+rage);ctx.lineTo(x-10,y-70+rage);ctx.fill();
+  // teeth
+  px('#ffffff');
+  for(let i=0;i<4;i++){ctx.fillRect(x-9+i*5,y-76+rage,3,5);}
+  // clawed arms
+  px('#7a0000'); ctx.fillRect(x-38,y-70,16,28);ctx.fillRect(x+22,y-70,16,28);
+  // claws
+  px('#500000');
+  ctx.beginPath();ctx.moveTo(x-36,y-44);ctx.lineTo(x-40,y-36);ctx.lineTo(x-33,y-40);ctx.fill();
+  ctx.beginPath();ctx.moveTo(x+36,y-44);ctx.lineTo(x+40,y-36);ctx.lineTo(x+33,y-40);ctx.fill();
+  // legs
+  px('#6a0000'); ctx.fillRect(x-18,y-22,14,26);ctx.fillRect(x+4,y-22,14,26);
+  px('#3a0000'); ctx.fillRect(x-18,y+2,14,8);ctx.fillRect(x+4,y+2,14,8);
+}
+
+// ─── RENDER LOOP ────────────────────────────────────────────────────────────
+
+function renderLoop() {
+  anim++;
+  ctx.clearRect(0,0,W,H);
+
+  if(gameScene===0) drawForest();
+  else if(gameScene===1) drawMountain();
+  else drawLair();
+
+  const bob = Math.sin(anim*0.08) * 2;
+  const demonBob = Math.sin(anim*0.06+1) * 3;
+
+  // Walk characters toward right side as story progresses
+  const targetMapleleaf = gameScene===0 ? 130 : gameScene===1 ? 200 : 150;
+  mapleleafX += (targetMapleleaf - mapleleafX) * 0.02;
+  beaverX = mapleleafX - 48;
+
+  drawBeaver(Math.round(beaverX), bob);
+  drawMapleleaf(Math.round(mapleleafX), bob);
+
+  if(gameScene===2) drawDemon(530, demonBob);
+
+  requestAnimationFrame(renderLoop);
+}
+
+// ─── START ──────────────────────────────────────────────────────────────────
+
+function startGame() {
+  document.getElementById('title-screen').style.display = 'none';
+  nextLine();
+  renderLoop();
+}
+
+updateBars();
+</script>
+</body>
+</html>
